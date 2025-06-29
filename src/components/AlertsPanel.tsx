@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Bell, Mail, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Bell, Mail, RefreshCw, TrendingUp } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { secureStorage, validateInput } from "@/utils/security";
 
