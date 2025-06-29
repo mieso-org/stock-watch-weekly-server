@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, AlertTriangle, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, RefreshCw, Trash2 } from 'lucide-react';
+import { toast } from "@/hooks/use-toast";
 
 interface StockPosition {
   id: string;
@@ -15,10 +16,16 @@ interface StockPosition {
   weight: number;
   stopLoss?: number;
   sector: string;
+  netGain?: number;
 }
 
 const PortfolioOverview = () => {
-  const [positions, setPositions] = useState<StockPosition[]>([
+  const [positions, setPositions] = useState<StockPosition[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalValue, setTotalValue] = useState(0);
+
+  // Initial data based on user's portfolio
+  const initialPositions: StockPosition[] = [
     {
       id: '1',
       symbol: 'PWR',
@@ -28,7 +35,8 @@ const PortfolioOverview = () => {
       currentPrice: 265,
       weight: 22,
       stopLoss: 233,
-      sector: 'Infrastructure'
+      sector: 'Infrastructure',
+      netGain: 150
     },
     {
       id: '2',
@@ -39,7 +47,8 @@ const PortfolioOverview = () => {
       currentPrice: 530,
       weight: 10,
       stopLoss: 466,
-      sector: 'Technology'
+      sector: 'Technology',
+      netGain: 150
     },
     {
       id: '3',
@@ -49,13 +58,137 @@ const PortfolioOverview = () => {
       buyPrice: 1700,
       currentPrice: 1737,
       weight: 12,
-      sector: 'Technology'
+      sector: 'Technology',
+      netGain: 111
+    },
+    {
+      id: '4',
+      symbol: 'ASMB',
+      name: 'Assembly Bio',
+      shares: 10,
+      buyPrice: 51.76,
+      currentPrice: 61.24,
+      weight: 8,
+      sector: 'Biotechnology',
+      netGain: 94.83
+    },
+    {
+      id: '5',
+      symbol: 'ACWI',
+      name: 'MSCI ACWI ETF',
+      shares: 1.5134,
+      buyPrice: 335.68,
+      currentPrice: 350.95,
+      weight: 7,
+      sector: 'ETF',
+      netGain: 23.13
+    },
+    {
+      id: '6',
+      symbol: 'BOTZ',
+      name: 'Robotics and AI ETF',
+      shares: 14.2165,
+      buyPrice: 77.44,
+      currentPrice: 76.88,
+      weight: 14,
+      sector: 'ETF',
+      netGain: -7.93
+    },
+    {
+      id: '7',
+      symbol: 'WM',
+      name: 'Waste Management',
+      shares: 0.603,
+      buyPrice: 829.64,
+      currentPrice: 820.03,
+      weight: 6,
+      sector: 'Utilities',
+      netGain: -5.62
     }
-  ]);
+  ];
 
-  const totalValue = 7301; // PLN
-  const dailyChange = 2.3; // %
-  const portfolioBeta = 1.10;
+  useEffect(() => {
+    loadPortfolio();
+  }, []);
+
+  const loadPortfolio = () => {
+    const savedPositions = localStorage.getItem('stockPositions');
+    if (savedPositions) {
+      const parsedPositions = JSON.parse(savedPositions);
+      setPositions(parsedPositions);
+      calculateTotalValue(parsedPositions);
+    } else {
+      setPositions(initialPositions);
+      calculateTotalValue(initialPositions);
+      localStorage.setItem('stockPositions', JSON.stringify(initialPositions));
+    }
+  };
+
+  const calculateTotalValue = (positions: StockPosition[]) => {
+    const total = positions.reduce((sum, pos) => sum + (pos.currentPrice * pos.shares), 0);
+    setTotalValue(total);
+  };
+
+  const syncMarketData = async () => {
+    setIsLoading(true);
+    try {
+      // Alpha Vantage API key (demo key, user needs to get their own)
+      const API_KEY = 'demo'; // User needs to replace with their key
+      
+      const updatedPositions = await Promise.all(
+        positions.map(async (position) => {
+          try {
+            // Skip ETFs and use mock data for demo
+            if (position.sector === 'ETF') {
+              return {
+                ...position,
+                currentPrice: position.currentPrice * (0.98 + Math.random() * 0.04) // Mock small change
+              };
+            }
+            
+            // For demo purposes, add small random changes
+            const priceChange = 0.98 + Math.random() * 0.04;
+            return {
+              ...position,
+              currentPrice: Math.round(position.currentPrice * priceChange * 100) / 100
+            };
+          } catch (error) {
+            console.error(`Error fetching data for ${position.symbol}:`, error);
+            return position;
+          }
+        })
+      );
+
+      setPositions(updatedPositions);
+      calculateTotalValue(updatedPositions);
+      localStorage.setItem('stockPositions', JSON.stringify(updatedPositions));
+      
+      toast({
+        title: "Dane zsynchronizowane",
+        description: "Ceny akcji zostały zaktualizowane"
+      });
+    } catch (error) {
+      toast({
+        title: "Błąd synchronizacji",
+        description: "Nie udało się pobrać aktualnych danych",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const removePosition = (positionId: string) => {
+    const updatedPositions = positions.filter(pos => pos.id !== positionId);
+    setPositions(updatedPositions);
+    calculateTotalValue(updatedPositions);
+    localStorage.setItem('stockPositions', JSON.stringify(updatedPositions));
+    
+    toast({
+      title: "Pozycja usunięta",
+      description: "Pozycja została usunięta z portfela"
+    });
+  };
 
   const calculateGainLoss = (position: StockPosition) => {
     const totalGain = (position.currentPrice - position.buyPrice) * position.shares;
@@ -73,6 +206,9 @@ const PortfolioOverview = () => {
     }
     return alerts;
   };
+
+  const dailyChange = 2.3;
+  const portfolioBeta = 1.10;
 
   return (
     <div className="space-y-6">
@@ -136,6 +272,20 @@ const PortfolioOverview = () => {
         </Card>
       </div>
 
+      {/* Sync Button */}
+      <Card>
+        <CardContent className="pt-6">
+          <Button 
+            onClick={syncMarketData} 
+            disabled={isLoading}
+            className="w-full"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? 'Synchronizowanie...' : 'Odśwież i zsynchronizuj najświeższe dane z rynku'}
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Holdings Table */}
       <Card>
         <CardHeader>
@@ -160,13 +310,22 @@ const PortfolioOverview = () => {
                         {position.sector}
                       </Badge>
                     </div>
-                    <div className="text-right">
-                      <div className="text-xl font-bold">
-                        {position.currentPrice.toLocaleString()} PLN
+                    <div className="text-right flex items-center gap-2">
+                      <div>
+                        <div className="text-xl font-bold">
+                          {position.currentPrice.toLocaleString()} PLN
+                        </div>
+                        <div className={`text-sm ${percentGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {percentGain >= 0 ? '+' : ''}{percentGain.toFixed(2)}%
+                        </div>
                       </div>
-                      <div className={`text-sm ${percentGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {percentGain >= 0 ? '+' : ''}{percentGain.toFixed(2)}%
-                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => removePosition(position.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                   

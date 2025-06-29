@@ -13,6 +13,7 @@ const StockForm = () => {
     name: '',
     shares: '',
     buyPrice: '',
+    currentPrice: '',
     sector: '',
     stopLoss: ''
   });
@@ -28,7 +29,7 @@ const StockForm = () => {
     e.preventDefault();
     
     // Validation
-    if (!formData.symbol || !formData.shares || !formData.buyPrice) {
+    if (!formData.symbol || !formData.shares || !formData.buyPrice || !formData.currentPrice) {
       toast({
         title: "Błąd",
         description: "Wypełnij wszystkie wymagane pola",
@@ -39,10 +40,14 @@ const StockForm = () => {
 
     const shares = parseFloat(formData.shares);
     const buyPrice = parseFloat(formData.buyPrice);
-    const totalValue = shares * buyPrice;
+    const currentPrice = parseFloat(formData.currentPrice);
+    const totalValue = shares * currentPrice;
     
-    // Check if position would exceed 25% rule
-    const portfolioValue = 7301; // Current portfolio value
+    // Get current portfolio value
+    const existingPositions = JSON.parse(localStorage.getItem('stockPositions') || '[]');
+    const portfolioValue = existingPositions.reduce((sum: number, pos: any) => 
+      sum + (pos.currentPrice * pos.shares), 0);
+    
     const positionWeight = (totalValue / (portfolioValue + totalValue)) * 100;
     
     if (positionWeight > 25) {
@@ -54,16 +59,17 @@ const StockForm = () => {
       return;
     }
 
-    // Save to localStorage (in real app this would go to a database)
-    const existingPositions = JSON.parse(localStorage.getItem('stockPositions') || '[]');
     const newPosition = {
       id: Date.now().toString(),
-      ...formData,
-      shares: parseFloat(formData.shares),
-      buyPrice: parseFloat(formData.buyPrice),
-      stopLoss: formData.stopLoss ? parseFloat(formData.stopLoss) : null,
-      dateAdded: new Date().toISOString(),
-      weight: positionWeight
+      symbol: formData.symbol.toUpperCase(),
+      name: formData.name || formData.symbol.toUpperCase(),
+      shares: shares,
+      buyPrice: buyPrice,
+      currentPrice: currentPrice,
+      stopLoss: formData.stopLoss ? parseFloat(formData.stopLoss) : undefined,
+      sector: formData.sector || 'Other',
+      weight: Math.round(positionWeight * 10) / 10,
+      dateAdded: new Date().toISOString()
     };
     
     existingPositions.push(newPosition);
@@ -71,7 +77,7 @@ const StockForm = () => {
 
     toast({
       title: "Sukces",
-      description: `Dodano pozycję ${formData.symbol} (${positionWeight.toFixed(1)}% portfela)`
+      description: `Dodano pozycję ${formData.symbol.toUpperCase()} (${positionWeight.toFixed(1)}% portfela)`
     });
 
     // Reset form
@@ -80,15 +86,18 @@ const StockForm = () => {
       name: '',
       shares: '',
       buyPrice: '',
+      currentPrice: '',
       sector: '',
       stopLoss: ''
     });
   };
 
   const calculatePositionSize = () => {
-    if (formData.shares && formData.buyPrice) {
-      const totalValue = parseFloat(formData.shares) * parseFloat(formData.buyPrice);
-      const portfolioValue = 7301;
+    if (formData.shares && formData.currentPrice) {
+      const totalValue = parseFloat(formData.shares) * parseFloat(formData.currentPrice);
+      const existingPositions = JSON.parse(localStorage.getItem('stockPositions') || '[]');
+      const portfolioValue = existingPositions.reduce((sum: number, pos: any) => 
+        sum + (pos.currentPrice * pos.shares), 0);
       const weight = (totalValue / (portfolioValue + totalValue)) * 100;
       return { totalValue, weight };
     }
@@ -131,13 +140,13 @@ const StockForm = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="shares">Liczba Akcji *</Label>
                 <Input
                   id="shares"
                   type="number"
-                  step="0.1"
+                  step="0.0001"
                   placeholder="10"
                   value={formData.shares}
                   onChange={(e) => handleInputChange('shares', e.target.value)}
@@ -155,6 +164,18 @@ const StockForm = () => {
                   onChange={(e) => handleInputChange('buyPrice', e.target.value)}
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="currentPrice">Cena Bieżąca (PLN) *</Label>
+                <Input
+                  id="currentPrice"
+                  type="number"
+                  step="0.01"
+                  placeholder="1750.00"
+                  value={formData.currentPrice}
+                  onChange={(e) => handleInputChange('currentPrice', e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -167,12 +188,15 @@ const StockForm = () => {
                   <SelectContent>
                     <SelectItem value="technology">Technology</SelectItem>
                     <SelectItem value="healthcare">Healthcare</SelectItem>
+                    <SelectItem value="biotechnology">Biotechnology</SelectItem>
                     <SelectItem value="finance">Finance</SelectItem>
                     <SelectItem value="infrastructure">Infrastructure</SelectItem>
                     <SelectItem value="consumer">Consumer</SelectItem>
                     <SelectItem value="energy">Energy</SelectItem>
                     <SelectItem value="materials">Materials</SelectItem>
+                    <SelectItem value="utilities">Utilities</SelectItem>
                     <SelectItem value="etf">ETF</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

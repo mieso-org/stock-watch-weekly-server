@@ -1,55 +1,119 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { TrendingUp, TrendingDown, AlertCircle, Target, Calendar, Download } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, Target, Calendar, Download, RefreshCw } from 'lucide-react';
+import { toast } from "@/hooks/use-toast";
 
 const WeeklyReport = () => {
   const [selectedWeek, setSelectedWeek] = useState('current');
+  const [isLoading, setIsLoading] = useState(false);
+  const [reportData, setReportData] = useState<any>(null);
 
-  const weeklyData = {
-    current: {
-      period: '13-19 Stycznia 2025',
-      portfolioReturn: 2.1,
-      sp500Return: 1.8,
-      alpha: 0.3,
-      beta: 1.10,
-      maxDrawdown: -3.2,
-      bestPerformer: { symbol: 'MSFT', return: 4.2 },
-      worstPerformer: { symbol: 'NVDA', return: -1.5 },
-      rebalanceNeeded: false,
-      stopLossAlerts: 1
-    }
-  };
+  const syncReportData = () => {
+    setIsLoading(true);
+    
+    // Get positions from localStorage
+    const positions = JSON.parse(localStorage.getItem('stockPositions') || '[]');
+    
+    // Calculate portfolio metrics
+    const totalValue = positions.reduce((sum: number, pos: any) => sum + (pos.currentPrice * pos.shares), 0);
+    const totalCost = positions.reduce((sum: number, pos: any) => sum + (pos.buyPrice * pos.shares), 0);
+    const portfolioReturn = ((totalValue - totalCost) / totalCost) * 100;
+    
+    // Find best and worst performers
+    let bestPerformer = { symbol: 'N/A', return: 0 };
+    let worstPerformer = { symbol: 'N/A', return: 0 };
+    
+    positions.forEach((pos: any) => {
+      const posReturn = ((pos.currentPrice - pos.buyPrice) / pos.buyPrice) * 100;
+      if (posReturn > bestPerformer.return) {
+        bestPerformer = { symbol: pos.symbol, return: posReturn };
+      }
+      if (posReturn < worstPerformer.return) {
+        worstPerformer = { symbol: pos.symbol, return: posReturn };
+      }
+    });
 
-  const currentData = weeklyData.current;
+    // Generate recommendations
+    const recommendations = [];
+    
+    positions.forEach((pos: any) => {
+      const gain = ((pos.currentPrice - pos.buyPrice) / pos.buyPrice) * 100;
+      
+      if (gain > 10) {
+        recommendations.push({
+          type: 'action',
+          priority: 'high',
+          title: `Ustaw trailing stop na ${pos.symbol}`,
+          description: `Akcja wzrosła o ${gain.toFixed(1)}% - rozważ trailing stop na poziomie 12% poniżej maksimum`,
+          deadline: 'W ciągu tygodnia'
+        });
+      }
+      
+      if (pos.stopLoss && pos.currentPrice <= pos.stopLoss * 1.1) {
+        recommendations.push({
+          type: 'watch',
+          priority: 'medium',
+          title: `Monitoruj ${pos.symbol}`,
+          description: `Cena zbliża się do stop-loss ${pos.stopLoss} PLN`,
+          deadline: 'Ciągle'
+        });
+      }
+      
+      if (pos.weight > 22) {
+        recommendations.push({
+          type: 'action',
+          priority: 'high',
+          title: `Zmniejsz wagę ${pos.symbol}`,
+          description: `Pozycja stanowi ${pos.weight}% portfela - przekracza strategiczny limit`,
+          deadline: 'W ciągu tygodnia'
+        });
+      }
+    });
 
-  const recommendations = [
-    {
-      type: 'action',
-      priority: 'high',
-      title: 'Ustaw trailing stop na MSFT',
-      description: 'Akcja wzrosła o 4.2% - rozważ trailing stop na poziomie 12% poniżej maksimum',
-      deadline: '20 Stycznia'
-    },
-    {
-      type: 'watch',
-      priority: 'medium',
-      title: 'Monitoruj NVDA',
-      description: 'Spadek -1.5% w tygodniu, obserwuj czy nie zbliża się do stop-loss 466 PLN',
-      deadline: 'Ciągle'
-    },
-    {
+    // Add learning recommendation
+    recommendations.push({
       type: 'learn',
       priority: 'low',
       title: 'Lekcja CAN-SLIM: O - Outstanding Earnings',
       description: 'Zaplanowane na sobotę - analiza wyników PWR wraz z lekcją metodologii O\'Neil',
-      deadline: '18 Stycznia 09:00'
-    }
-  ];
+      deadline: 'Sobota 09:00'
+    });
+
+    const newReportData = {
+      period: '13-19 Stycznia 2025',
+      portfolioReturn: portfolioReturn,
+      sp500Return: 1.8,
+      alpha: portfolioReturn - 1.8,
+      beta: 1.10,
+      maxDrawdown: Math.max(-15, Math.min(...positions.map((p: any) => 
+        ((p.currentPrice - p.buyPrice) / p.buyPrice) * 100
+      ))),
+      bestPerformer,
+      worstPerformer,
+      rebalanceNeeded: positions.some((p: any) => p.weight > 25),
+      stopLossAlerts: positions.filter((p: any) => 
+        p.stopLoss && p.currentPrice <= p.stopLoss
+      ).length,
+      recommendations
+    };
+
+    setReportData(newReportData);
+    setIsLoading(false);
+
+    toast({
+      title: "Raport zsynchronizowany",
+      description: "Dane tygodniowe zostały zaktualizowane"
+    });
+  };
+
+  useEffect(() => {
+    syncReportData();
+  }, []);
 
   const upcomingScreenings = [
     {
@@ -69,7 +133,7 @@ const WeeklyReport = () => {
   const riskMetrics = [
     {
       metric: 'Portfolio Beta',
-      current: 1.10,
+      current: reportData?.beta || 1.10,
       target: 0.90,
       status: 'above',
       description: 'Portfel bardziej zmienny od rynku'
@@ -79,7 +143,7 @@ const WeeklyReport = () => {
       current: 22,
       target: 25,
       status: 'ok',
-      description: 'PWR - największa pozycja w limicie'
+      description: 'Największa pozycja w limicie'
     },
     {
       metric: 'Sektor Tech',
@@ -89,6 +153,58 @@ const WeeklyReport = () => {
       description: 'Dywersyfikacja sektorowa w normie'
     }
   ];
+
+  const exportToPDF = () => {
+    if (!reportData) {
+      toast({
+        title: "Brak danych",
+        description: "Najpierw zsynchronizuj raport",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // For now, create a simple text report
+    // In production, this would generate a proper PDF
+    const reportContent = `
+RAPORT TYGODNIOWY - ${reportData.period}
+
+WYNIKI PORTFELA:
+- Zwrot portfela: ${reportData.portfolioReturn.toFixed(2)}%
+- S&P 500: ${reportData.sp500Return}%
+- Alpha: ${reportData.alpha.toFixed(2)}%
+- Beta: ${reportData.beta}
+- Max Drawdown: ${reportData.maxDrawdown.toFixed(2)}%
+
+NAJLEPSZE/NAJGORSZE POZYCJE:
+- Najlepszy: ${reportData.bestPerformer.symbol} (+${reportData.bestPerformer.return.toFixed(2)}%)
+- Najgorszy: ${reportData.worstPerformer.symbol} (${reportData.worstPerformer.return.toFixed(2)}%)
+
+REKOMENDACJE:
+${reportData.recommendations.map((rec: any, i: number) => 
+  `${i + 1}. ${rec.title} - ${rec.description}`
+).join('\n')}
+
+ALERTY STOP-LOSS: ${reportData.stopLossAlerts}
+REBALANSOWANIE: ${reportData.rebalanceNeeded ? 'Wymagane' : 'Nie wymagane'}
+    `;
+
+    // Create and download the report
+    const blob = new Blob([reportContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `raport-tygodniowy-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Raport wyeksportowany",
+      description: "Plik został pobrany"
+    });
+  };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -114,6 +230,17 @@ const WeeklyReport = () => {
     }
   };
 
+  if (!reportData) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Button onClick={syncReportData} disabled={isLoading}>
+          <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? 'Ładowanie...' : 'Załaduj raport tygodniowy'}
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Week Selector */}
@@ -129,11 +256,22 @@ const WeeklyReport = () => {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">{currentData.period}</h3>
-            <Button variant="outline" size="sm">
-              <Download className="w-4 h-4 mr-2" />
-              Eksportuj PDF
-            </Button>
+            <h3 className="text-lg font-semibold">{reportData.period}</h3>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={syncReportData}
+                disabled={isLoading}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                Synchronizuj
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportToPDF}>
+                <Download className="w-4 h-4 mr-2" />
+                Eksportuj PDF
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -153,8 +291,8 @@ const WeeklyReport = () => {
                 <CardTitle className="text-sm">Zwrot Portfela</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  +{currentData.portfolioReturn}%
+                <div className={`text-2xl font-bold ${reportData.portfolioReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {reportData.portfolioReturn >= 0 ? '+' : ''}{reportData.portfolioReturn.toFixed(1)}%
                 </div>
                 <p className="text-sm text-gray-600">w tym tygodniu</p>
               </CardContent>
@@ -165,11 +303,11 @@ const WeeklyReport = () => {
                 <CardTitle className="text-sm">Alpha vs S&P 500</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  +{currentData.alpha}%
+                <div className={`text-2xl font-bold ${reportData.alpha >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {reportData.alpha >= 0 ? '+' : ''}{reportData.alpha.toFixed(1)}%
                 </div>
                 <p className="text-sm text-gray-600">
-                  S&P 500: +{currentData.sp500Return}%
+                  S&P 500: +{reportData.sp500Return}%
                 </p>
               </CardContent>
             </Card>
@@ -180,7 +318,7 @@ const WeeklyReport = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">
-                  {currentData.maxDrawdown}%
+                  {reportData.maxDrawdown.toFixed(1)}%
                 </div>
                 <p className="text-sm text-gray-600">Cel: ≤ -15%</p>
               </CardContent>
@@ -199,7 +337,7 @@ const WeeklyReport = () => {
                     <span className="font-semibold">Najlepszy:</span>
                   </div>
                   <p className="font-bold text-green-800">
-                    {currentData.bestPerformer.symbol}: +{currentData.bestPerformer.return}%
+                    {reportData.bestPerformer.symbol}: +{reportData.bestPerformer.return.toFixed(1)}%
                   </p>
                 </div>
 
@@ -209,7 +347,7 @@ const WeeklyReport = () => {
                     <span className="font-semibold">Najgorszy:</span>
                   </div>
                   <p className="font-bold text-red-800">
-                    {currentData.worstPerformer.symbol}: {currentData.worstPerformer.return}%
+                    {reportData.worstPerformer.symbol}: {reportData.worstPerformer.return.toFixed(1)}%
                   </p>
                 </div>
               </div>
@@ -258,7 +396,7 @@ const WeeklyReport = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {recommendations.map((rec, index) => (
+                {reportData.recommendations.map((rec: any, index: number) => (
                   <div key={index} className="border rounded-lg p-4">
                     <div className="flex items-start gap-3">
                       <div className="flex-1">

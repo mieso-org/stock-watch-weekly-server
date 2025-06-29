@@ -1,17 +1,19 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Bell, Mail, TrendingDown, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Bell, Mail, TrendingDown, TrendingUp, RefreshCw } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 
 const AlertsPanel = () => {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentAlerts, setCurrentAlerts] = useState<any[]>([]);
   const [alertSettings, setAlertSettings] = useState({
     stopLoss: true,
     positionSize: true,
@@ -19,30 +21,6 @@ const AlertsPanel = () => {
     marketNews: false,
     portfolioRebalance: true
   });
-
-  const currentAlerts = [
-    {
-      id: 1,
-      type: 'warning',
-      message: 'NVDA osiągnęła 88% stop-loss poziomu (466 PLN)',
-      timestamp: '2025-01-15 09:30',
-      priority: 'high'
-    },
-    {
-      id: 2,
-      type: 'info',
-      message: 'Cotygodniowy przegląd portfela dostępny',
-      timestamp: '2025-01-15 08:00',
-      priority: 'medium'
-    },
-    {
-      id: 3,
-      type: 'success',
-      message: 'MSFT wzrosła o 2.2% - rozważ trailing stop',
-      timestamp: '2025-01-14 16:45',
-      priority: 'low'
-    }
-  ];
 
   const upcomingActions = [
     {
@@ -62,13 +40,83 @@ const AlertsPanel = () => {
     }
   ];
 
-  const handleEmailSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    syncAlerts();
+  }, []);
+
+  const syncAlerts = () => {
+    setIsLoading(true);
+    
+    // Get current positions from localStorage
+    const positions = JSON.parse(localStorage.getItem('stockPositions') || '[]');
+    const newAlerts = [];
+
+    positions.forEach((position: any) => {
+      // Check stop-loss alerts
+      if (position.stopLoss && position.currentPrice <= position.stopLoss) {
+        newAlerts.push({
+          id: `sl-${position.id}`,
+          type: 'warning',
+          message: `${position.symbol} osiągnęła stop-loss poziom (${position.stopLoss} PLN)`,
+          timestamp: new Date().toLocaleString('pl-PL'),
+          priority: 'high'
+        });
+      }
+
+      // Check position size alerts
+      if (position.weight > 25) {
+        newAlerts.push({
+          id: `ps-${position.id}`,
+          type: 'warning',
+          message: `${position.symbol} przekracza 25% wagi portfela (${position.weight}%)`,
+          timestamp: new Date().toLocaleString('pl-PL'),
+          priority: 'high'
+        });
+      }
+
+      // Check for significant gains (trailing stop recommendation)
+      const gain = ((position.currentPrice - position.buyPrice) / position.buyPrice) * 100;
+      if (gain > 10) {
+        newAlerts.push({
+          id: `ts-${position.id}`,
+          type: 'success',
+          message: `${position.symbol} wzrosła o ${gain.toFixed(1)}% - rozważ trailing stop`,
+          timestamp: new Date().toLocaleString('pl-PL'),
+          priority: 'medium'
+        });
+      }
+    });
+
+    // Add general weekly report alert
+    newAlerts.push({
+      id: 'weekly-report',
+      type: 'info',
+      message: 'Cotygodniowy przegląd portfela dostępny',
+      timestamp: new Date().toLocaleString('pl-PL'),
+      priority: 'low'
+    });
+
+    setCurrentAlerts(newAlerts);
+    setIsLoading(false);
+
+    toast({
+      title: "Alerty zsynchronizowane",
+      description: `Znaleziono ${newAlerts.length} aktywnych alertów`
+    });
+  };
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (email) {
+      // For now, just show success message
+      // In production, this would integrate with Supabase Edge Functions
       toast({
-        title: "Powiadomienia email skonfigurowane",
-        description: `Raporty będą wysyłane na ${email}`
+        title: "Email zapisany",
+        description: `Powiadomienia będą wysyłane na ${email}`,
       });
+      
+      // TODO: Integrate with Supabase for actual email sending
+      console.log('Email configuration saved:', email);
     }
   };
 
@@ -96,12 +144,26 @@ const AlertsPanel = () => {
 
   return (
     <div className="space-y-6">
+      {/* Sync Button */}
+      <Card>
+        <CardContent className="pt-6">
+          <Button 
+            onClick={syncAlerts} 
+            disabled={isLoading}
+            className="w-full"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? 'Synchronizowanie...' : 'Synchronizuj alerty z portfelem'}
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Current Alerts */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bell className="w-5 h-5" />
-            Aktywne Alerty
+            Aktywne Alerty ({currentAlerts.length})
           </CardTitle>
           <CardDescription>
             Bieżące powiadomienia dotyczące Twojego portfela
@@ -109,18 +171,24 @@ const AlertsPanel = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {currentAlerts.map((alert) => (
-              <div key={alert.id} className="flex items-start gap-3 p-3 border rounded-lg">
-                {getAlertIcon(alert.type)}
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{alert.message}</p>
-                  <p className="text-xs text-gray-500 mt-1">{alert.timestamp}</p>
+            {currentAlerts.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">
+                Brak aktywnych alertów. Kliknij "Synchronizuj" aby sprawdzić aktualne alerty.
+              </p>
+            ) : (
+              currentAlerts.map((alert) => (
+                <div key={alert.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                  {getAlertIcon(alert.type)}
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{alert.message}</p>
+                    <p className="text-xs text-gray-500 mt-1">{alert.timestamp}</p>
+                  </div>
+                  <Badge className={getPriorityColor(alert.priority)}>
+                    {alert.priority}
+                  </Badge>
                 </div>
-                <Badge className={getPriorityColor(alert.priority)}>
-                  {alert.priority}
-                </Badge>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </CardContent>
       </Card>
@@ -182,6 +250,9 @@ const AlertsPanel = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Funkcja wysyłania emaili wymaga konfiguracji Supabase
+                </p>
               </div>
               <Button type="submit" size="sm">
                 Zapisz email
