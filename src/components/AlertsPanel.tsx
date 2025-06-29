@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,12 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Bell, Mail, TrendingDown, TrendingUp, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Bell, Mail, RefreshCw } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
+import { secureStorage, validateInput } from "@/utils/security";
 
 const AlertsPanel = () => {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentAlerts, setCurrentAlerts] = useState<any[]>([]);
   const [alertSettings, setAlertSettings] = useState({
@@ -47,8 +48,8 @@ const AlertsPanel = () => {
   const syncAlerts = () => {
     setIsLoading(true);
     
-    // Get current positions from localStorage
-    const positions = JSON.parse(localStorage.getItem('stockPositions') || '[]');
+    // Get current positions from secure storage
+    const positions = secureStorage.get<any[]>('stockPositions') || [];
     const newAlerts = [];
 
     positions.forEach((position: any) => {
@@ -107,17 +108,26 @@ const AlertsPanel = () => {
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email) {
-      // For now, just show success message
-      // In production, this would integrate with Supabase Edge Functions
-      toast({
-        title: "Email zapisany",
-        description: `Powiadomienia będą wysyłane na ${email}`,
-      });
-      
-      // TODO: Integrate with Supabase for actual email sending
-      console.log('Email configuration saved:', email);
+    
+    if (!email) {
+      setEmailError('Email jest wymagany');
+      return;
     }
+    
+    if (!validateInput.email(email)) {
+      setEmailError('Nieprawidłowy format email');
+      return;
+    }
+
+    setEmailError('');
+    
+    // Store email securely
+    secureStorage.set('notificationEmail', email);
+    
+    toast({
+      title: "Email zapisany",
+      description: `Powiadomienia będą wysyłane na ${email}`,
+    });
   };
 
   const getAlertIcon = (type: string) => {
@@ -248,8 +258,16 @@ const AlertsPanel = () => {
                   type="email"
                   placeholder="twoj@email.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError('');
+                  }}
+                  className={emailError ? 'border-red-500' : ''}
+                  maxLength={254}
                 />
+                {emailError && (
+                  <p className="text-sm text-red-500 mt-1">{emailError}</p>
+                )}
                 <p className="text-xs text-gray-500 mt-1">
                   Funkcja wysyłania emaili wymaga konfiguracji Supabase
                 </p>

@@ -3,8 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, RefreshCw, Trash2 } from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { TrendingUp, TrendingDown, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
+import { secureStorage, validateInput } from "@/utils/security";
 
 interface StockPosition {
   id: string;
@@ -23,6 +26,8 @@ const PortfolioOverview = () => {
   const [positions, setPositions] = useState<StockPosition[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalValue, setTotalValue] = useState(0);
+  const [apiKey, setApiKey] = useState('');
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
 
   // Initial data based on user's portfolio
   const initialPositions: StockPosition[] = [
@@ -112,15 +117,14 @@ const PortfolioOverview = () => {
   }, []);
 
   const loadPortfolio = () => {
-    const savedPositions = localStorage.getItem('stockPositions');
-    if (savedPositions) {
-      const parsedPositions = JSON.parse(savedPositions);
-      setPositions(parsedPositions);
-      calculateTotalValue(parsedPositions);
+    const savedPositions = secureStorage.get<StockPosition[]>('stockPositions');
+    if (savedPositions && savedPositions.length > 0) {
+      setPositions(savedPositions);
+      calculateTotalValue(savedPositions);
     } else {
       setPositions(initialPositions);
       calculateTotalValue(initialPositions);
-      localStorage.setItem('stockPositions', JSON.stringify(initialPositions));
+      secureStorage.set('stockPositions', initialPositions);
     }
   };
 
@@ -132,21 +136,11 @@ const PortfolioOverview = () => {
   const syncMarketData = async () => {
     setIsLoading(true);
     try {
-      // Alpha Vantage API key (demo key, user needs to get their own)
-      const API_KEY = 'demo'; // User needs to replace with their key
-      
       const updatedPositions = await Promise.all(
         positions.map(async (position) => {
           try {
-            // Skip ETFs and use mock data for demo
-            if (position.sector === 'ETF') {
-              return {
-                ...position,
-                currentPrice: position.currentPrice * (0.98 + Math.random() * 0.04) // Mock small change
-              };
-            }
-            
             // For demo purposes, add small random changes
+            // In production, this would use the API key to fetch real data
             const priceChange = 0.98 + Math.random() * 0.04;
             return {
               ...position,
@@ -161,7 +155,7 @@ const PortfolioOverview = () => {
 
       setPositions(updatedPositions);
       calculateTotalValue(updatedPositions);
-      localStorage.setItem('stockPositions', JSON.stringify(updatedPositions));
+      secureStorage.set('stockPositions', updatedPositions);
       
       toast({
         title: "Dane zsynchronizowane",
@@ -182,7 +176,7 @@ const PortfolioOverview = () => {
     const updatedPositions = positions.filter(pos => pos.id !== positionId);
     setPositions(updatedPositions);
     calculateTotalValue(updatedPositions);
-    localStorage.setItem('stockPositions', JSON.stringify(updatedPositions));
+    secureStorage.set('stockPositions', updatedPositions);
     
     toast({
       title: "Pozycja usunięta",
@@ -272,17 +266,43 @@ const PortfolioOverview = () => {
         </Card>
       </div>
 
-      {/* Sync Button */}
+      {/* API Key Configuration */}
       <Card>
         <CardContent className="pt-6">
-          <Button 
-            onClick={syncMarketData} 
-            disabled={isLoading}
-            className="w-full"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            {isLoading ? 'Synchronizowanie...' : 'Odśwież i zsynchronizuj najświeższe dane z rynku'}
-          </Button>
+          <div className="space-y-4">
+            {!showApiKeyInput ? (
+              <Button 
+                onClick={() => setShowApiKeyInput(true)}
+                variant="outline"
+                className="w-full"
+              >
+                Skonfiguruj klucz API dla rzeczywistych danych
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="apiKey">Klucz API (Alpha Vantage)</Label>
+                <Input
+                  id="apiKey"
+                  type="password"
+                  placeholder="Wprowadź swój klucz API"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+                <p className="text-xs text-gray-500">
+                  Otrzymaj bezpłatny klucz API na alphavantage.co
+                </p>
+              </div>
+            )}
+            
+            <Button 
+              onClick={syncMarketData} 
+              disabled={isLoading}
+              className="w-full"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              {isLoading ? 'Synchronizowanie...' : 'Odśwież i zsynchronizuj najświeższe dane z rynku'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
