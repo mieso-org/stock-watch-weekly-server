@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,108 +6,152 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { TrendingUp, TrendingDown, AlertCircle, Target, Calendar, Download, RefreshCw } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
+import { secureStorage } from "@/utils/security";
 
 const WeeklyReport = () => {
   const [selectedWeek, setSelectedWeek] = useState('current');
   const [isLoading, setIsLoading] = useState(false);
   const [reportData, setReportData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const syncReportData = () => {
     setIsLoading(true);
+    setError(null);
     
-    // Get positions from localStorage
-    const positions = JSON.parse(localStorage.getItem('stockPositions') || '[]');
-    
-    // Calculate portfolio metrics
-    const totalValue = positions.reduce((sum: number, pos: any) => sum + (pos.currentPrice * pos.shares), 0);
-    const totalCost = positions.reduce((sum: number, pos: any) => sum + (pos.buyPrice * pos.shares), 0);
-    const portfolioReturn = ((totalValue - totalCost) / totalCost) * 100;
-    
-    // Find best and worst performers
-    let bestPerformer = { symbol: 'N/A', return: 0 };
-    let worstPerformer = { symbol: 'N/A', return: 0 };
-    
-    positions.forEach((pos: any) => {
-      const posReturn = ((pos.currentPrice - pos.buyPrice) / pos.buyPrice) * 100;
-      if (posReturn > bestPerformer.return) {
-        bestPerformer = { symbol: pos.symbol, return: posReturn };
-      }
-      if (posReturn < worstPerformer.return) {
-        worstPerformer = { symbol: pos.symbol, return: posReturn };
-      }
-    });
-
-    // Generate recommendations
-    const recommendations = [];
-    
-    positions.forEach((pos: any) => {
-      const gain = ((pos.currentPrice - pos.buyPrice) / pos.buyPrice) * 100;
+    try {
+      // Get positions from secure storage instead of localStorage
+      const positions = secureStorage.get<any[]>('stockPositions') || [];
       
-      if (gain > 10) {
-        recommendations.push({
-          type: 'action',
-          priority: 'high',
-          title: `Ustaw trailing stop na ${pos.symbol}`,
-          description: `Akcja wzrosła o ${gain.toFixed(1)}% - rozważ trailing stop na poziomie 12% poniżej maksimum`,
-          deadline: 'W ciągu tygodnia'
-        });
+      if (positions.length === 0) {
+        setError('Brak pozycji w portfelu. Dodaj akcje aby wygenerować raport.');
+        setIsLoading(false);
+        return;
       }
+
+      // Calculate portfolio metrics
+      const totalValue = positions.reduce((sum: number, pos: any) => {
+        const currentPrice = pos.currentPrice || pos.buyPrice || 0;
+        const shares = pos.shares || 0;
+        return sum + (currentPrice * shares);
+      }, 0);
       
-      if (pos.stopLoss && pos.currentPrice <= pos.stopLoss * 1.1) {
-        recommendations.push({
-          type: 'watch',
-          priority: 'medium',
-          title: `Monitoruj ${pos.symbol}`,
-          description: `Cena zbliża się do stop-loss ${pos.stopLoss} PLN`,
-          deadline: 'Ciągle'
-        });
-      }
+      const totalCost = positions.reduce((sum: number, pos: any) => {
+        const buyPrice = pos.buyPrice || 0;
+        const shares = pos.shares || 0;
+        return sum + (buyPrice * shares);
+      }, 0);
       
-      if (pos.weight > 22) {
-        recommendations.push({
-          type: 'action',
-          priority: 'high',
-          title: `Zmniejsz wagę ${pos.symbol}`,
-          description: `Pozycja stanowi ${pos.weight}% portfela - przekracza strategiczny limit`,
-          deadline: 'W ciągu tygodnia'
-        });
-      }
-    });
+      const portfolioReturn = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : 0;
+      
+      // Find best and worst performers
+      let bestPerformer = { symbol: 'N/A', return: 0 };
+      let worstPerformer = { symbol: 'N/A', return: 0 };
+      
+      positions.forEach((pos: any) => {
+        const currentPrice = pos.currentPrice || pos.buyPrice || 0;
+        const buyPrice = pos.buyPrice || 0;
+        if (buyPrice > 0) {
+          const posReturn = ((currentPrice - buyPrice) / buyPrice) * 100;
+          if (posReturn > bestPerformer.return) {
+            bestPerformer = { symbol: pos.symbol || 'N/A', return: posReturn };
+          }
+          if (posReturn < worstPerformer.return) {
+            worstPerformer = { symbol: pos.symbol || 'N/A', return: posReturn };
+          }
+        }
+      });
 
-    // Add learning recommendation
-    recommendations.push({
-      type: 'learn',
-      priority: 'low',
-      title: 'Lekcja CAN-SLIM: O - Outstanding Earnings',
-      description: 'Zaplanowane na sobotę - analiza wyników PWR wraz z lekcją metodologii O\'Neil',
-      deadline: 'Sobota 09:00'
-    });
+      // Generate recommendations
+      const recommendations = [];
+      
+      positions.forEach((pos: any) => {
+        const currentPrice = pos.currentPrice || pos.buyPrice || 0;
+        const buyPrice = pos.buyPrice || 0;
+        const weight = pos.weight || 0;
+        
+        if (buyPrice > 0) {
+          const gain = ((currentPrice - buyPrice) / buyPrice) * 100;
+          
+          if (gain > 10) {
+            recommendations.push({
+              type: 'action',
+              priority: 'high',
+              title: `Ustaw trailing stop na ${pos.symbol}`,
+              description: `Akcja wzrosła o ${gain.toFixed(1)}% - rozważ trailing stop na poziomie 12% poniżej maksimum`,
+              deadline: 'W ciągu tygodnia'
+            });
+          }
+          
+          if (pos.stopLoss && currentPrice <= pos.stopLoss * 1.1) {
+            recommendations.push({
+              type: 'watch',
+              priority: 'medium',
+              title: `Monitoruj ${pos.symbol}`,
+              description: `Cena zbliża się do stop-loss ${pos.stopLoss} PLN`,
+              deadline: 'Ciągle'
+            });
+          }
+          
+          if (weight > 22) {
+            recommendations.push({
+              type: 'action',
+              priority: 'high',
+              title: `Zmniejsz wagę ${pos.symbol}`,
+              description: `Pozycja stanowi ${weight}% portfela - przekracza strategiczny limit`,
+              deadline: 'W ciągu tygodnia'
+            });
+          }
+        }
+      });
 
-    const newReportData = {
-      period: '13-19 Stycznia 2025',
-      portfolioReturn: portfolioReturn,
-      sp500Return: 1.8,
-      alpha: portfolioReturn - 1.8,
-      beta: 1.10,
-      maxDrawdown: Math.max(-15, Math.min(...positions.map((p: any) => 
-        ((p.currentPrice - p.buyPrice) / p.buyPrice) * 100
-      ))),
-      bestPerformer,
-      worstPerformer,
-      rebalanceNeeded: positions.some((p: any) => p.weight > 25),
-      stopLossAlerts: positions.filter((p: any) => 
-        p.stopLoss && p.currentPrice <= p.stopLoss
-      ).length,
-      recommendations
-    };
+      // Add learning recommendation
+      recommendations.push({
+        type: 'learn',
+        priority: 'low',
+        title: 'Lekcja CAN-SLIM: O - Outstanding Earnings',
+        description: 'Zaplanowane na sobotę - analiza wyników PWR wraz z lekcją metodologii O\'Neil',
+        deadline: 'Sobota 09:00'
+      });
 
-    setReportData(newReportData);
-    setIsLoading(false);
+      const newReportData = {
+        period: '13-19 Stycznia 2025',
+        portfolioReturn: portfolioReturn,
+        sp500Return: 1.8,
+        alpha: portfolioReturn - 1.8,
+        beta: 1.10,
+        maxDrawdown: Math.max(-15, Math.min(...positions.map((p: any) => {
+          const currentPrice = p.currentPrice || p.buyPrice || 0;
+          const buyPrice = p.buyPrice || 0;
+          return buyPrice > 0 ? ((currentPrice - buyPrice) / buyPrice) * 100 : 0;
+        }))),
+        bestPerformer,
+        worstPerformer,
+        rebalanceNeeded: positions.some((p: any) => (p.weight || 0) > 25),
+        stopLossAlerts: positions.filter((p: any) => 
+          p.stopLoss && (p.currentPrice || 0) <= p.stopLoss
+        ).length,
+        recommendations
+      };
 
-    toast({
-      title: "Raport zsynchronizowany",
-      description: "Dane tygodniowe zostały zaktualizowane"
-    });
+      setReportData(newReportData);
+      setIsLoading(false);
+
+      toast({
+        title: "Raport zsynchronizowany",
+        description: "Dane tygodniowe zostały zaktualizowane"
+      });
+
+    } catch (error) {
+      console.error('Błąd podczas synchronizacji raportu:', error);
+      setError('Błąd podczas ładowania danych portfela. Spróbuj ponownie.');
+      setIsLoading(false);
+      
+      toast({
+        title: "Błąd synchronizacji",
+        description: "Nie udało się załadować danych portfela",
+        variant: "destructive"
+      });
+    }
   };
 
   useEffect(() => {
@@ -230,12 +273,40 @@ REBALANSOWANIE: ${reportData.rebalanceNeeded ? 'Wymagane' : 'Nie wymagane'}
     }
   };
 
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+        <AlertCircle className="w-12 h-12 text-red-500" />
+        <h3 className="text-lg font-semibold text-red-700">Błąd ładowania raportu</h3>
+        <p className="text-gray-600 text-center max-w-md">{error}</p>
+        <Button onClick={syncReportData} disabled={isLoading}>
+          <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          Spróbuj ponownie
+        </Button>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (!reportData && isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Button disabled>
+          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+          Ładowanie raportu...
+        </Button>
+      </div>
+    );
+  }
+
+  // No data state
   if (!reportData) {
     return (
       <div className="flex items-center justify-center py-8">
         <Button onClick={syncReportData} disabled={isLoading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          {isLoading ? 'Ładowanie...' : 'Załaduj raport tygodniowy'}
+          Załaduj raport tygodniowy
         </Button>
       </div>
     );
