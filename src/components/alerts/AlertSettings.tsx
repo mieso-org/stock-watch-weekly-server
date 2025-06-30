@@ -14,7 +14,7 @@ interface AlertSettingsType {
 
 interface AlertSettingsProps {
   alertSettings: AlertSettingsType;
-  setAlertSettings: (settings: AlertSettingsType) => void;
+  setAlertSettings: React.Dispatch<React.SetStateAction<AlertSettingsType>>;
 }
 
 const AlertSettings = ({ alertSettings, setAlertSettings }: AlertSettingsProps) => {
