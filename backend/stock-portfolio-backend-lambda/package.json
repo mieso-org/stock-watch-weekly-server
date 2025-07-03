@@ -1,0 +1,19 @@
+{
+  "name": "stock-portfolio-backend-lambda",
+  "version": "1.0.0",
+  "description": "<!-- title: 'AWS Python Example' description: 'This template demonstrates how to deploy a Python function running on AWS Lambda using the Serverless Framework.' layout: Doc framework: v4 platform: AWS language: python priority: 2 authorLink: 'https://github.com/serverless' authorName: 'Serverless, Inc.' authorAvatar: 'https://avatars1.githubusercontent.com/u/13742415?s=200&v=4' -->",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.840.0",
+    "express": "^5.1.0",
+    "pg": "^8.16.3",
+    "serverless-http": "^3.2.0"
+  }
+}

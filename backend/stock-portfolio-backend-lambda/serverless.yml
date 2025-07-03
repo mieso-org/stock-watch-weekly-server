@@ -1,0 +1,19 @@
+service: stock-portfolio-api
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  environment:
+    SECRET_ARN: arn:aws:secretsmanager:…:secret:stockPortfolioDBCredentials
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - secretsmanager:GetSecretValue
+      Resource: ${self:provider.environment.SECRET_ARN}
+
+functions:
+  api:
+    handler: lambda.handler
+    events:
+      - httpApi: '*'
