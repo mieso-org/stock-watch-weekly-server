@@ -31,4 +31,4 @@ app.get('/portfolio', async (req, res) => {
 
 // Dodaj inne trasy z kontrolerów…
 
-module.exports.lambda = serverless(app);
+module.exports.handler = serverless(app);

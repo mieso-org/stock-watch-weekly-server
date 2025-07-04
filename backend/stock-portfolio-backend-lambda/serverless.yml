@@ -5,7 +5,7 @@ provider:
   runtime: nodejs18.x
   region: us-east-1
   environment:
-    SECRET_ARN: arn:aws:secretsmanager:…:secret:stockPortfolioDBCredentials
+    SECRET_ARN: arn:aws:secretsmanager:us-east-1:841740286185:secret:stockPortfolioDBCredentials-mVe6ij
   iamRoleStatements:
     - Effect: Allow
       Action:
